@@ -13,7 +13,7 @@ from PIL import Image
 from util import load_data, add_img
 
 HIDDEN_VARS_NUMBER = 50
-num_epochs = 200
+num_epochs = 100
 
 
 def build_encoder(batch_size, input_var):
@@ -71,15 +71,17 @@ def build_decoder(z):
         nonlinearity=None)
 
     l_hid2_sd = lasagne.layers.DenseLayer(
-        l_hid1, num_units=1500,
+        l_hid1, num_units=1000,
         nonlinearity=lasagne.nonlinearities.tanh)
 
     l_hid3_sd = lasagne.layers.DenseLayer(
-        l_hid2_sd, num_units=2500,
+        l_hid2_sd, num_units=500,
         nonlinearity=lasagne.nonlinearities.tanh)
 
     l_sd2 = lasagne.layers.DenseLayer(
-        l_hid3_sd, num_units=28*28,
+        l_hid3_sd, num_units=1,
+        W=lasagne.init.Normal(0.001),
+        b=lasagne.init.Constant(2.),
         nonlinearity=None)
 
     return l_mean, l_sd2
@@ -114,8 +116,6 @@ def show_image(decode_fn, data, name):
 
 
 def main():
-    # theano.config.optimizer = "None"
-
     train_x, test_x = load_data()
 
     train_size = len(train_x)
@@ -127,7 +127,6 @@ def main():
     batch_size = 1000
 
     index = T.iscalar("index")
-    transposition = T.ivector("transposition")
 
     data_batch = train_data[index:index + batch_size, :]
 
@@ -168,22 +167,16 @@ def main():
         else:
             grad_sum = (g ** 2).mean()
 
-    updates = lasagne.updates.adam(scaled_grads, params, learning_rate=0.0003)
+    updates = lasagne.updates.adam(scaled_grads, params, learning_rate=0.001)
 
     train_fn = theano.function([index], [loss, grad_sum], updates=updates)
 
     decode_fn = theano.function([index], [data_mean, data_log_sd2])
 
-    shuffle_fn = theano.function([transposition], [],
-                                 updates=[
-                                     (train_data, train_data[transposition])
-                                 ])
-
     print("Starting training...")
     for epoch in range(num_epochs):
         indexes = list(range(train_size))
         random.shuffle(indexes)
-        shuffle_fn(indexes)
 
         train_err = 0
         train_batches = 0
@@ -202,12 +195,15 @@ def main():
             epoch + 1, num_epochs, time.time() - start_time))
         print("  training loss:\t\t{:.6f}".format(train_err / train_batches))
 
-        os.mkdir("../img/vae_mnist/")
+        base_img_path = "../img/vae_mnist/"
+        if not os.path.exists(base_img_path):
+            os.makedirs(base_img_path)
 
         show_image(decode_fn,
-                   train_data,
-                   '../img/vae_mnist/samples_{}.png'.format(epoch + 1))
+                   train_x,
+                   os.path.join(base_img_path, 'samples_{}.png'.format(epoch + 1)))
 
 
 if __name__ == '__main__':
+    # theano.config.optimizer = "None"
     main()
