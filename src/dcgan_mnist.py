@@ -9,7 +9,6 @@ import time
 import os
 
 from PIL import Image
-from theano.tensor.nnet.nnet import logsoftmax
 
 from util.data import load_data, add_img
 from util.logs import get_result_directory_path, FileLogger
@@ -26,45 +25,70 @@ class DiscriminatorParams():
         def shared(x):
             return theano.shared(x.astype(theano.config.floatX), borrow=True)
 
-        self.h1_size = 600
-        self.W1 = shared(initW.sample(shape=(28 * 28, self.h1_size)))
-        self.b1 = shared(inttB.sample(self.h1_size))
+        self.num_filter1 = 10
+        self.W1 = shared(initW.sample(shape=(self.num_filter1, 1, 5, 5)))
+        self.b1 = shared(inttB.sample(shape=self.num_filter1, ))
 
-        self.h2_size = 400
-        self.W2 = shared(initW.sample(shape=(self.h1_size, self.h2_size)))
-        self.b2 = shared(inttB.sample(self.h2_size))
+        self.num_filter2 = 20
+        self.W2 = shared(initW.sample(shape=(self.num_filter2, self.num_filter1, 5, 5)))
+        self.b2 = shared(inttB.sample(shape=self.num_filter2, ))
 
-        self.W_out = shared(initW.sample(shape=(self.h2_size, 2)))
+        self.h3_size = 500
+        self.W3 = shared(initW.sample(shape=(20 * 4 * 4, self.h3_size)))
+        self.b3 = shared(inttB.sample(self.h3_size))
+
+        self.W_out = shared(initW.sample(shape=(self.h3_size, 2)))
         self.b_out = shared(inttB.sample(2))
 
     def get_list(self):
-        return [self.W1, self.b1, self.W2, self.b2, self.W_out, self.b_out]
+        return [self.W1, self.b1,
+                self.W2, self.b2,
+                self.W3, self.b3,
+                self.W_out, self.b_out]
 
 
 def build_discriminator(batch_size, input_var, params):
     l_in = lasagne.layers.InputLayer(shape=(batch_size, 28 * 28),
                                      input_var=input_var)
 
-    l_in = lasagne.layers.DropoutLayer(l_in, p=0.1)
+    l_in = lasagne.layers.ReshapeLayer(l_in, shape=(batch_size, 1, 28, 28))
 
-    l_hid1 = lasagne.layers.DenseLayer(
-        l_in, num_units=params.h1_size,
+    l_in = lasagne.layers.DropoutLayer(l_in, 0.1)
+
+    l_conv1 = lasagne.layers.Conv2DLayer(
+        l_in,
+        num_filters=params.num_filter1,
+        filter_size=(5, 5),
         W=params.W1,
         b=params.b1,
         nonlinearity=lasagne.nonlinearities.leaky_rectify)
 
-    l_hid1 = lasagne.layers.DropoutLayer(l_hid1, p=0.4)
+    l_conv1 = lasagne.layers.DropoutLayer(l_conv1, 0.1)
 
-    l_hid2 = lasagne.layers.DenseLayer(
-        l_hid1, num_units=params.h2_size,
+    l_conv_max1 = lasagne.layers.MaxPool2DLayer(l_conv1, (2, 2))
+
+    l_conv2 = lasagne.layers.Conv2DLayer(
+        l_conv_max1,
+        num_filters=params.num_filter2,
+        filter_size=(5, 5),
         W=params.W2,
         b=params.b2,
         nonlinearity=lasagne.nonlinearities.leaky_rectify)
 
-    l_hid2 = lasagne.layers.DropoutLayer(l_hid2, p=0.4)
+    l_conv2 = lasagne.layers.DropoutLayer(l_conv2, 0.1)
+
+    l_conv_max2 = lasagne.layers.MaxPool2DLayer(l_conv2, (2, 2))
+
+    l_hid3 = lasagne.layers.DenseLayer(
+        l_conv_max2, num_units=params.h3_size,
+        W=params.W3,
+        b=params.b3,
+        nonlinearity=lasagne.nonlinearities.leaky_rectify)
+
+    l_hid3 = lasagne.layers.DropoutLayer(l_hid3, 0.1)
 
     l_out = lasagne.layers.DenseLayer(
-        l_hid2, num_units=2,
+        l_hid3, num_units=2,
         W=params.W_out,
         b=params.b_out,
         nonlinearity=None)
@@ -72,7 +96,7 @@ def build_discriminator(batch_size, input_var, params):
     return l_out
 
 
-def build_generator(z):
+def build_generator(batch_size, z):
     l_in = lasagne.layers.InputLayer(shape=(None, HIDDEN_VARS_NUMBER), input_var=z)
 
     l_hid1 = lasagne.layers.batch_norm(lasagne.layers.DenseLayer(
@@ -81,21 +105,25 @@ def build_generator(z):
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
     l_hid2 = lasagne.layers.batch_norm(lasagne.layers.DenseLayer(
-        l_hid1, num_units=1500,
+        l_hid1, num_units=80 * 4 * 4,
         W=lasagne.init.Normal(0.1),
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
-    l_hid3 = lasagne.layers.batch_norm(lasagne.layers.DenseLayer(
-        l_hid2, num_units=2500,
-        W=lasagne.init.Normal(0.1),
+    l_reshaped = lasagne.layers.ReshapeLayer(l_hid2, shape=(batch_size, 80, 4, 4))
+
+    l_deconv1 = lasagne.layers.batch_norm(lasagne.layers.TransposedConv2DLayer(
+        l_reshaped, 80, filter_size=(5, 5), stride=(2, 2),
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
-    l_mean = lasagne.layers.DenseLayer(
-        l_hid3, num_units=28 * 28,
-        W=lasagne.init.Normal(0.1),
+    l_deconv2 = lasagne.layers.batch_norm(lasagne.layers.TransposedConv2DLayer(
+        l_deconv1, 40, filter_size=(5, 5), stride=(2, 2),
+        nonlinearity=lasagne.nonlinearities.leaky_rectify))
+
+    l_deconv3 = lasagne.layers.TransposedConv2DLayer(
+        l_deconv2, 1, filter_size=(4, 4),
         nonlinearity=lasagne.nonlinearities.sigmoid)
 
-    return l_mean
+    return lasagne.layers.ReshapeLayer(l_deconv3, shape=(batch_size, 28 * 28))
 
 
 def show_image(data, name):
@@ -133,7 +161,7 @@ def main():
 
     z = random_streams.normal((batch_size, HIDDEN_VARS_NUMBER))
 
-    l_x_generated = build_generator(z)
+    l_x_generated = build_generator(batch_size, z)
     x_generated = lasagne.layers.get_output(l_x_generated)
 
     params = DiscriminatorParams()
@@ -160,11 +188,11 @@ def main():
 
     params2 = lasagne.layers.get_all_params(l_x_generated, trainable=True)
 
-    updates = lasagne.updates.nesterov_momentum(loss2, params2, learning_rate=0.001, momentum=0.9)
+    updates = lasagne.updates.nesterov_momentum(loss2, params2, learning_rate=0.0005, momentum=0.9)
 
     train_gen_fn = theano.function([], loss2, updates=updates)
 
-    base_path = get_result_directory_path("gan_minst")
+    base_path = get_result_directory_path("dcgan_minst")
     logger = FileLogger(base_path, "main")
 
     logger.log("Starting training...")
@@ -179,8 +207,7 @@ def main():
             logger.log("loss_data {:.5f} loss_gen {:.5f}, loss2 {:.5f} "
                        .format(float(loss_data), float(loss_gen), float(loss2)))
 
-        logger.log("Epoch {} of {} took {:.3f}s".format(
-            epoch + 1, num_epochs, time.time() - start_time))
+        logger.log("Epoch {} of {} took {:.3f}s".format(epoch + 1, num_epochs, time.time() - start_time))
 
         show_image(x_gen_fn(),
                    os.path.join(base_path, "samples_{}.png".format(epoch + 1)))
