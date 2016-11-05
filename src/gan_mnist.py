@@ -10,7 +10,8 @@ import os
 
 from PIL import Image
 
-from util import load_data, add_img
+from util.data import load_data, add_img
+from util.logs import get_result_directory_path, FileLogger
 
 HIDDEN_VARS_NUMBER = 50
 num_epochs = 1000
@@ -162,11 +163,10 @@ def main():
 
     train_gen_fn = theano.function([], loss2, updates=updates)
 
-    base_img_path = "../img/gan_mnist/"
-    if not os.path.exists(base_img_path):
-        os.makedirs(base_img_path)
+    base_path = get_result_directory_path("gan_minst")
+    logger = FileLogger(base_path, "main")
 
-    print("Starting training...")
+    logger.log("Starting training...")
     for epoch in range(num_epochs):
         indexes = list(range(train_size))
         random.shuffle(indexes)
@@ -175,14 +175,16 @@ def main():
         for offset in range(0, train_size, batch_size):
             loss_data, loss_gen = train_discrim_fn(offset)
             loss2 = train_gen_fn()
-            print("loss_data {:.5f} loss_gen {:.5f}, loss2 {:.5f} "
+            logger.log("loss_data {:.5f} loss_gen {:.5f}, loss2 {:.5f} "
                   .format(float(loss_data), float(loss_gen), float(loss2)))
 
-        print("Epoch {} of {} took {:.3f}s".format(
+        logger.log("Epoch {} of {} took {:.3f}s".format(
             epoch + 1, num_epochs, time.time() - start_time))
 
         show_image(x_gen_fn(),
-                   os.path.join(base_img_path, "samples_{}_final.png".format(epoch + 1)))
+                   os.path.join(base_path, "samples_{}_final.png".format(epoch + 1)))
+
+    logger.close()
 
 
 if __name__ == '__main__':

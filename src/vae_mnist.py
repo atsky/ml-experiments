@@ -10,7 +10,7 @@ import os
 
 from PIL import Image
 
-from util import load_data, add_img
+from util.data import load_data, add_img
 
 HIDDEN_VARS_NUMBER = 50
 num_epochs = 100
