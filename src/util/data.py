@@ -1,9 +1,12 @@
 import gzip
 import os
+import random
 import urllib.request
 import numpy as np
 
 import pickle
+
+from PIL import Image
 
 
 def load_data():
@@ -38,6 +41,19 @@ def load_data():
     train_set_x = np.concatenate([train_set_x, valid_set_x], axis=0)
     return train_set_x, test_set_x
 
+def load_cats_data():
+    imgs_path = os.path.join("..", "data", "out_aug_64x64")
+    file_names = [name for name in os.listdir(imgs_path) if name.endswith(".jpg")]
+    images_number = len(file_names)
+    random.shuffle(file_names)
+    data = np.zeros((images_number, 3, 64, 64))
+    print("images_number {}".format(images_number))
+    for i, file_name in enumerate(file_names):
+        img_path = os.path.join(imgs_path, file_name)
+        img = np.asarray(Image.open(img_path)).astype(float) / 255
+        data[i] = np.transpose(img, (2, 0, 1))
+    print("loading done")
+    return data
 
 def add_img(image_data, img, x, y):
     x_o = 28 * x

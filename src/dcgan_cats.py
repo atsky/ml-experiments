@@ -10,6 +10,7 @@ import os
 
 from PIL import Image
 
+from util.data import load_cats_data
 from util.logs import get_result_directory_path, FileLogger
 
 HIDDEN_VARS_NUMBER = 100
@@ -240,23 +241,8 @@ def train(train_x):
     logger.close()
 
 
-def load_data():
-    imgs_path = os.path.join("..", "data", "out_aug_64x64")
-    file_names = [name for name in os.listdir(imgs_path) if name.endswith(".jpg")]
-    images_number = len(file_names)
-    random.shuffle(file_names)
-    data = np.zeros((images_number, 3, 64, 64))
-    print("images_number {}".format(images_number))
-    for i, file_name in enumerate(file_names):
-        img_path = os.path.join(imgs_path, file_name)
-        img = np.asarray(Image.open(img_path)).astype(theano.config.floatX) / 255
-        data[i] = np.transpose(img, (2, 0, 1))
-    print("loading done")
-    return data
-
-
 def main():
-    data_x = load_data()
+    data_x = load_cats_data()
     train(data_x)
 
 
