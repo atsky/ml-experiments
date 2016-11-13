@@ -195,7 +195,7 @@ def train(train_x):
     train_data = theano.shared(
         train_x.astype(theano.config.floatX),
         borrow=True)
-    batch_size = 128
+    batch_size = 100
     index = T.iscalar("index")
     data_batch = train_data[index:index + batch_size, :]
     random_streams = theano.tensor.shared_randomstreams.RandomStreams()
@@ -212,12 +212,12 @@ def train(train_x):
     l2 = lasagne.regularization.apply_penalty(params.get_reg_list(), lasagne.regularization.l2)
     loss1 = loss_data + loss_gen + 1e-6 * l2
     params1 = params.get_list()
-    updates = lasagne.updates.adam(loss1, params1, learning_rate=0.0001)
+    updates = lasagne.updates.adam(loss1, params1, learning_rate=0.0003)
     train_discrim_fn = theano.function([index], [loss_data, loss_gen], updates=updates)
     x_gen_fn = theano.function([], x_generated)
     loss2 = -log_p_gen[:, 1].mean()
     params2 = lasagne.layers.get_all_params(l_x_generated, trainable=True)
-    updates = lasagne.updates.adam(loss2, params2, learning_rate=0.00002)
+    updates = lasagne.updates.adam(loss2, params2, learning_rate=0.0001)
     train_gen_fn = theano.function([], loss2, updates=updates)
     base_path = get_result_directory_path("dcgan_cats")
     logger = FileLogger(base_path, "main")
