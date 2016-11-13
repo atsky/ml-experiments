@@ -28,18 +28,18 @@ class DiscriminatorParams():
         def shared(x):
             return theano.shared(x.astype(theano.config.floatX), borrow=True)
 
-        self.num_filter1 = 10
+        self.num_filter1 = 20
         self.W1 = shared(initW.sample(shape=(self.num_filter1, 1, 5, 5)))
         self.beta1 = shared(beta.sample(shape=self.num_filter1))
         self.gamma1 = shared(gamma.sample(shape=self.num_filter1))
 
-        self.num_filter2 = 20
+        self.num_filter2 = 40
         self.W2 = shared(initW.sample(shape=(self.num_filter2, self.num_filter1, 5, 5)))
         self.beta2 = shared(beta.sample(shape=self.num_filter2))
         self.gamma2 = shared(gamma.sample(shape=self.num_filter2))
 
-        self.h3_size = 500
-        self.W3 = shared(initW.sample(shape=(20 * 4 * 4, self.h3_size)))
+        self.h3_size = 800
+        self.W3 = shared(initW.sample(shape=(40 * 4 * 4, self.h3_size)))
         self.beta3 = shared(beta.sample(shape=self.h3_size))
         self.gamma3 = shared(gamma.sample(shape=self.h3_size))
 
@@ -115,22 +115,22 @@ def build_generator(batch_size, z):
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
     l_hid2 = lasagne.layers.batch_norm(lasagne.layers.DenseLayer(
-        l_hid1, num_units=80 * 4 * 4,
+        l_hid1, num_units=128 * 5 * 5,
         W=lasagne.init.Normal(0.1),
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
-    l_reshaped = lasagne.layers.ReshapeLayer(l_hid2, shape=(batch_size, 80, 4, 4))
+    l_reshaped = lasagne.layers.ReshapeLayer(l_hid2, shape=(batch_size, 128, 5, 5))
 
     l_deconv1 = lasagne.layers.batch_norm(lasagne.layers.TransposedConv2DLayer(
-        l_reshaped, 80, filter_size=(6, 6), stride=2, crop=2,
+        l_reshaped, 128, filter_size=(4, 4), stride=2, crop=2,
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
     l_deconv2 = lasagne.layers.batch_norm(lasagne.layers.TransposedConv2DLayer(
-        l_deconv1, 40, filter_size=(5, 5), stride=2, crop=2,
+        l_deconv1, 64, filter_size=(4, 4), stride=2, crop=2,
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
     l_deconv3 = lasagne.layers.TransposedConv2DLayer(
-        l_deconv2, 1, filter_size=(4, 4), stride=2, crop=2,
+        l_deconv2, 1, filter_size=(4, 4), stride=2, crop=1,
         nonlinearity=lasagne.nonlinearities.sigmoid)
 
     return lasagne.layers.ReshapeLayer(l_deconv3, shape=(batch_size, 28 * 28))
@@ -138,13 +138,13 @@ def build_generator(batch_size, z):
 
 def show_image(data, name):
     image_data = np.zeros(
-        (28 * 20, 28 * 20, 3),
+        (28 * 10, 28 * 10, 3),
         dtype='uint8')
 
     index = 0
 
-    for x in range(20):
-        for y in range(20):
+    for x in range(10):
+        for y in range(10):
             add_img(image_data, np.clip(data[index, :], 0, 1), x, y)
             index += 1
 
@@ -161,7 +161,7 @@ def main():
         train_x.astype(theano.config.floatX),
         borrow=True)
 
-    batch_size = 400
+    batch_size = 100
 
     index = T.iscalar("index")
 

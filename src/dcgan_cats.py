@@ -151,22 +151,22 @@ def build_generator(batch_size, z):
     l_reshaped = lasagne.layers.ReshapeLayer(l_hid1, shape=(batch_size, 1024, 4, 4))
 
     l_deconv1 = lasagne.layers.batch_norm(lasagne.layers.TransposedConv2DLayer(
-        l_reshaped, 512, filter_size=(6, 6), stride=(2, 2), crop=2,
+        l_reshaped, 512, filter_size=(4, 4), stride=(2, 2), crop=1,
         W=lasagne.init.Normal(0.02),
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
     l_deconv2 = lasagne.layers.batch_norm(lasagne.layers.TransposedConv2DLayer(
-        l_deconv1, 256, filter_size=(6, 6), stride=(2, 2), crop=2,
+        l_deconv1, 256, filter_size=(4, 4), stride=(2, 2), crop=1,
         W=lasagne.init.Normal(0.02),
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
     l_deconv3 = lasagne.layers.batch_norm(lasagne.layers.TransposedConv2DLayer(
-        l_deconv2, 128, filter_size=(6, 6), stride=(2, 2), crop=2,
+        l_deconv2, 128, filter_size=(4, 4), stride=(2, 2), crop=1,
         W=lasagne.init.Normal(0.02),
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
     l_deconv4 = lasagne.layers.TransposedConv2DLayer(
-        l_deconv3, 3, filter_size=(6, 6), stride=(2, 2), crop=2,
+        l_deconv3, 3, filter_size=(4, 4), stride=(2, 2), crop=1,
         W=lasagne.init.Normal(0.02),
         nonlinearity=lasagne.nonlinearities.sigmoid)
 
