@@ -144,37 +144,38 @@ def build_decoder(batch_size, z):
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
     l_hid2 = lasagne.layers.batch_norm(lasagne.layers.DenseLayer(
-        l_hid1, num_units=80 * 4 * 4,
+        l_hid1, num_units=128 * 4 * 4,
         W=lasagne.init.Normal(0.1),
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
-    l_reshaped = lasagne.layers.ReshapeLayer(l_hid2, shape=(batch_size, 80, 4, 4))
+    l_reshaped = lasagne.layers.ReshapeLayer(l_hid2, shape=(batch_size, 128, 4, 4))
 
     l_deconv1 = lasagne.layers.batch_norm(lasagne.layers.TransposedConv2DLayer(
-        l_reshaped, 80, filter_size=(6, 6), stride=2, crop=2,
+        l_reshaped, 128, filter_size=(4, 4), stride=2, crop=1,
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
     l_deconv2 = lasagne.layers.batch_norm(lasagne.layers.TransposedConv2DLayer(
-        l_deconv1, 40, filter_size=(5, 5), stride=2, crop=2,
+        l_deconv1, 64, filter_size=(4, 4), stride=2, crop=1,
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
     l_deconv3 = lasagne.layers.TransposedConv2DLayer(
-        l_deconv2, 1, filter_size=(4, 4), stride=2, crop=2,
+        l_deconv2, 1, filter_size=(4, 4), stride=2, crop=3,
         nonlinearity=lasagne.nonlinearities.sigmoid)
 
     return lasagne.layers.ReshapeLayer(l_deconv3, shape=(batch_size, 28 * 28))
 
 
-def show_image(data, name):
+def show_image(data, generated, name):
     image_data = np.zeros(
         (28 * 20, 28 * 20, 3),
         dtype='uint8')
 
     index = 0
 
-    for x in range(20):
-        for y in range(20):
-            add_img(image_data, np.clip(data[index, :], 0, 1), x, y)
+    for y in range(20):
+        for x in range(10):
+            add_img(image_data, np.clip(data[index, :], 0, 1), 2 * x, y)
+            add_img(image_data, np.clip(generated[index, :], 0, 1), 2 * x + 1, y)
             index += 1
 
     image = Image.fromarray(image_data)
@@ -190,7 +191,7 @@ def main():
         train_x.astype(theano.config.floatX),
         borrow=True)
 
-    batch_size = 400
+    batch_size = 200
 
     index = T.iscalar("index")
 
@@ -222,7 +223,7 @@ def main():
 
     train_discrim_fn = theano.function([index], diff, updates=updates)
 
-    x_gen_fn = theano.function([index], x_generated)
+    x_gen_fn = theano.function([index], [data_batch, x_generated])
 
     loss2 = diff
 
@@ -231,6 +232,8 @@ def main():
     updates = lasagne.updates.adam(loss2, params2, learning_rate=0.0001)
 
     train_gen_fn = theano.function([index], diff, updates=updates)
+
+    diff_fn = theano.function([index], diff)
 
     base_path = get_result_directory_path("dcgan_minst")
     logger = FileLogger(base_path, "main")
@@ -242,14 +245,19 @@ def main():
 
         start_time = time.time()
         for offset in range(0, train_size, batch_size):
-            diff1 = train_discrim_fn(offset)
-            diff2 = train_gen_fn(offset)
-            logger.log("diff1 {:.5f} diff2 {:.5f}"
-                       .format(float(diff1), float(diff2)))
+            diff0 = diff_fn(offset)
+            train_gen_fn(offset)
+            diff1 = diff_fn(offset)
+            train_discrim_fn(offset)
+            diff2 = diff_fn(offset)
+            logger.log("diff0 {:.5f} diff1 {:.5f} diff2 {:.5f}"
+                       .format(float(diff0), float(diff1), float(diff2)))
 
         logger.log("Epoch {} of {} took {:.3f}s".format(epoch + 1, num_epochs, time.time() - start_time))
 
-        show_image(x_gen_fn(0),
+        batch, generated = x_gen_fn(0)
+        show_image(batch,
+                   generated,
                    os.path.join(base_path, "samples_{}.png".format(epoch + 1)))
 
     logger.close()
