@@ -13,8 +13,8 @@ from PIL import Image
 from util.data import load_data, add_img
 from util.logs import get_result_directory_path, FileLogger
 
-HIDDEN_VARS_NUMBER = 50
-num_epochs = 1000
+HIDDEN_VARS_NUMBER = 64
+num_epochs = 200
 
 
 class DiscriminatorParams():
@@ -43,8 +43,8 @@ class DiscriminatorParams():
         self.beta3 = shared(beta.sample(shape=self.h3_size))
         self.gamma3 = shared(gamma.sample(shape=self.h3_size))
 
-        self.W_out = shared(initW.sample(shape=(self.h3_size, 32)))
-        self.b_out = shared(inttB.sample(32))
+        self.W_out = shared(initW.sample(shape=(self.h3_size, 16)))
+        self.b_out = shared(inttB.sample(16))
 
     def get_list(self):
         return [self.W1, self.beta1, self.gamma1,
@@ -112,27 +112,29 @@ def build_encoder(batch_size, input_var):
 
     l_conv1 = lasagne.layers.Conv2DLayer(
         l_in,
-        num_filters=30,
-        filter_size=(5, 5),
+        num_filters=128,
+        filter_size=(4, 4),
         stride=2,
+        crop=1,
         nonlinearity=lasagne.nonlinearities.leaky_rectify)
 
     l_conv2 = lasagne.layers.Conv2DLayer(
         l_conv1,
-        num_filters=60,
-        filter_size=(5, 5),
+        num_filters=256,
+        filter_size=(4, 4),
         stride=2,
+        crop=1,
         nonlinearity=lasagne.nonlinearities.leaky_rectify)
 
-    l_hid1 = lasagne.layers.DenseLayer(
-        l_conv2, 1000,
+    l_hid1_meam = lasagne.layers.DenseLayer(
+        l_conv2, 1024,
         nonlinearity=lasagne.nonlinearities.leaky_rectify)
 
-    l_hid2 = lasagne.layers.DenseLayer(
-        l_hid1, HIDDEN_VARS_NUMBER,
+    l_hid2_mean = lasagne.layers.DenseLayer(
+        l_hid1_meam, HIDDEN_VARS_NUMBER,
         nonlinearity=lasagne.nonlinearities.tanh)
 
-    return l_hid2
+    return l_hid2_mean
 
 
 def build_decoder(batch_size, z):
@@ -144,18 +146,18 @@ def build_decoder(batch_size, z):
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
     l_hid2 = lasagne.layers.batch_norm(lasagne.layers.DenseLayer(
-        l_hid1, num_units=128 * 4 * 4,
+        l_hid1, num_units=256 * 4 * 4,
         W=lasagne.init.Normal(0.1),
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
-    l_reshaped = lasagne.layers.ReshapeLayer(l_hid2, shape=(batch_size, 128, 4, 4))
+    l_reshaped = lasagne.layers.ReshapeLayer(l_hid2, shape=(batch_size, 256, 4, 4))
 
     l_deconv1 = lasagne.layers.batch_norm(lasagne.layers.TransposedConv2DLayer(
-        l_reshaped, 128, filter_size=(4, 4), stride=2, crop=1,
+        l_reshaped, 256, filter_size=(4, 4), stride=2, crop=1,
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
     l_deconv2 = lasagne.layers.batch_norm(lasagne.layers.TransposedConv2DLayer(
-        l_deconv1, 64, filter_size=(4, 4), stride=2, crop=1,
+        l_deconv1, 128, filter_size=(4, 4), stride=2, crop=1,
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
     l_deconv3 = lasagne.layers.TransposedConv2DLayer(
@@ -199,8 +201,9 @@ def main():
 
     # random_streams = theano.tensor.shared_randomstreams.RandomStreams()
 
-    l_z = build_encoder(batch_size, data_batch)
-    z = lasagne.layers.get_output(l_z)
+    l_z_mean = build_encoder(batch_size, data_batch)
+    z = lasagne.layers.get_output(l_z_mean)
+
     l_x_generated = build_decoder(batch_size, z)
     x_generated = lasagne.layers.get_output(l_x_generated)
 
@@ -227,7 +230,7 @@ def main():
 
     loss2 = diff
 
-    params2 = lasagne.layers.get_all_params([l_x_generated, l_z], trainable=True)
+    params2 = lasagne.layers.get_all_params([l_x_generated, l_z_mean], trainable=True)
 
     updates = lasagne.updates.adam(loss2, params2, learning_rate=0.0001)
 
