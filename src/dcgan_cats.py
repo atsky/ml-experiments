@@ -29,22 +29,22 @@ class DiscriminatorParams():
             return theano.shared(x.astype(theano.config.floatX), borrow=True)
 
         self.num_filter1 = 16
-        self.W1 = shared(initW.sample(shape=(self.num_filter1, 3, 5, 5)))
+        self.W1 = shared(initW.sample(shape=(self.num_filter1, 3, 4, 4)))
         self.beta1 = shared(beta.sample(shape=self.num_filter1))
         self.gamma1 = shared(gamma.sample(shape=self.num_filter1))
 
         self.num_filter2 = 32
-        self.W2 = shared(initW.sample(shape=(self.num_filter2, self.num_filter1, 5, 5)))
+        self.W2 = shared(initW.sample(shape=(self.num_filter2, self.num_filter1, 4, 4)))
         self.beta2 = shared(beta.sample(shape=self.num_filter2))
         self.gamma2 = shared(gamma.sample(shape=self.num_filter2))
 
         self.num_filter3 = 64
-        self.W3 = shared(initW.sample(shape=(self.num_filter3, self.num_filter2, 5, 5)))
+        self.W3 = shared(initW.sample(shape=(self.num_filter3, self.num_filter2, 4, 4)))
         self.beta3 = shared(beta.sample(shape=self.num_filter3))
         self.gamma3 = shared(gamma.sample(shape=self.num_filter3))
 
         self.h1_size = 1024
-        self.h_W1 = shared(initW.sample(shape=(self.num_filter3 * 5 * 5, self.h1_size)))
+        self.h_W1 = shared(initW.sample(shape=(self.num_filter3 * 10 * 10, self.h1_size)))
         self.beta_h1 = shared(beta.sample(shape=self.h1_size))
         self.gamma_h1 = shared(gamma.sample(shape=self.h1_size))
 
@@ -73,24 +73,26 @@ def build_discriminator(batch_size, input_var, params):
     l_conv1 = lasagne.layers.Conv2DLayer(
         l_in,
         num_filters=params.num_filter1,
-        filter_size=(5, 5),
+        filter_size=(4, 4),
         stride=2,
+        pad=3,
         W=params.W1,
         b=None,
         nonlinearity=lasagne.nonlinearities.leaky_rectify)
+
+    print(l_conv1.output_shape)
 
     l_conv1 = lasagne.layers.batch_norm(
         l_conv1,
         beta=params.beta1,
         gamma=params.gamma1)
 
-    l_conv1 = lasagne.layers.GaussianNoiseLayer(l_conv1, sigma=0.1)
-
     l_conv2 = lasagne.layers.Conv2DLayer(
         l_conv1,
         num_filters=params.num_filter2,
-        filter_size=(5, 5),
+        filter_size=(4, 4),
         stride=2,
+        pad=2,
         W=params.W2,
         b=None,
         nonlinearity=lasagne.nonlinearities.leaky_rectify)
@@ -100,13 +102,14 @@ def build_discriminator(batch_size, input_var, params):
         beta=params.beta2,
         gamma=params.gamma2)
 
-    l_conv2 = lasagne.layers.GaussianNoiseLayer(l_conv2, sigma=0.1)
+    print(l_conv2.output_shape)
 
     l_conv3 = lasagne.layers.Conv2DLayer(
         l_conv2,
         num_filters=params.num_filter3,
-        filter_size=(5, 5),
+        filter_size=(4, 4),
         stride=2,
+        pad=2,
         W=params.W3,
         b=None,
         nonlinearity=lasagne.nonlinearities.leaky_rectify)
@@ -116,7 +119,7 @@ def build_discriminator(batch_size, input_var, params):
         beta=params.beta3,
         gamma=params.gamma3)
 
-    l_conv3 = lasagne.layers.GaussianNoiseLayer(l_conv3, sigma=0.1)
+    print(l_conv3.output_shape)
 
     l_hid3 = lasagne.layers.DenseLayer(
         l_conv3, num_units=params.h1_size,
@@ -128,8 +131,6 @@ def build_discriminator(batch_size, input_var, params):
         l_hid3,
         beta=params.beta_h1,
         gamma=params.gamma_h1)
-
-    l_hid3 = lasagne.layers.GaussianNoiseLayer(l_hid3, sigma=0.1)
 
     l_out = lasagne.layers.DenseLayer(
         l_hid3, num_units=2,
@@ -144,31 +145,39 @@ def build_generator(batch_size, z):
     l_in = lasagne.layers.InputLayer(shape=(None, HIDDEN_VARS_NUMBER), input_var=z)
 
     l_hid1 = lasagne.layers.batch_norm(lasagne.layers.DenseLayer(
-        l_in, num_units=1024 * 4 * 4,
+        l_in, num_units=1024 * 6 * 6,
         W=lasagne.init.Normal(0.02),
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
-    l_reshaped = lasagne.layers.ReshapeLayer(l_hid1, shape=(batch_size, 1024, 4, 4))
+    l_reshaped = lasagne.layers.ReshapeLayer(l_hid1, shape=(batch_size, 1024, 6, 6))
 
     l_deconv1 = lasagne.layers.batch_norm(lasagne.layers.TransposedConv2DLayer(
-        l_reshaped, 512, filter_size=(4, 4), stride=(2, 2), crop=1,
+        l_reshaped, 512, filter_size=(4, 4), stride=(2, 2), crop=2,
         W=lasagne.init.Normal(0.02),
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
+
+    print(l_deconv1.output_shape)
 
     l_deconv2 = lasagne.layers.batch_norm(lasagne.layers.TransposedConv2DLayer(
-        l_deconv1, 256, filter_size=(4, 4), stride=(2, 2), crop=1,
+        l_deconv1, 256, filter_size=(4, 4), stride=(2, 2), crop=2,
         W=lasagne.init.Normal(0.02),
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
+
+    print(l_deconv2.output_shape)
 
     l_deconv3 = lasagne.layers.batch_norm(lasagne.layers.TransposedConv2DLayer(
-        l_deconv2, 128, filter_size=(4, 4), stride=(2, 2), crop=1,
+        l_deconv2, 128, filter_size=(4, 4), stride=(2, 2), crop=2,
         W=lasagne.init.Normal(0.02),
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
+    print(l_deconv3.output_shape)
+
     l_deconv4 = lasagne.layers.TransposedConv2DLayer(
-        l_deconv3, 3, filter_size=(4, 4), stride=(2, 2), crop=1,
+        l_deconv3, 3, filter_size=(4, 4), stride=(2, 2), crop=3,
         W=lasagne.init.Normal(0.02),
         nonlinearity=lasagne.nonlinearities.sigmoid)
+
+    print(l_deconv4.output_shape)
 
     return l_deconv4
 
