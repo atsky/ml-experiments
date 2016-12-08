@@ -14,7 +14,7 @@ from util.data import load_cats_data
 from util.logs import get_result_directory_path, FileLogger
 
 HIDDEN_VARS_NUMBER = 100
-num_epochs = 1000
+num_epochs = 100
 
 
 class DiscriminatorParams():
@@ -205,7 +205,7 @@ def train(train_x):
     train_data = theano.shared(
         train_x.astype(theano.config.floatX),
         borrow=True)
-    batch_size = 100
+    batch_size = 64
     index = T.iscalar("index")
     data_batch = train_data[index:index + batch_size, :]
     random_streams = theano.tensor.shared_randomstreams.RandomStreams()
@@ -222,7 +222,7 @@ def train(train_x):
     l2 = lasagne.regularization.apply_penalty(params.get_reg_list(), lasagne.regularization.l2)
     loss1 = loss_data + loss_gen + 1e-6 * l2
     params1 = params.get_list()
-    updates = lasagne.updates.adam(loss1, params1, learning_rate=0.0003)
+    updates = lasagne.updates.adam(loss1, params1, learning_rate=0.0005)
     train_discrim_fn = theano.function([index], [loss_data, loss_gen], updates=updates)
     x_gen_fn = theano.function([], x_generated)
     loss2 = -log_p_gen[:, 1].mean()
@@ -245,7 +245,9 @@ def train(train_x):
 
         logger.log("Epoch {} of {} took {:.3f}s".format(epoch + 1, num_epochs, time.time() - start_time))
 
-        show_image(x_gen_fn(),
+        g1 = x_gen_fn()
+        g2 = x_gen_fn()
+        show_image(np.concatenate((g1, g2)),
                    os.path.join(base_path, "samples_{}.png".format(epoch + 1)))
     logger.close()
 
