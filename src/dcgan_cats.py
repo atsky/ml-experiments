@@ -43,26 +43,26 @@ class DiscriminatorParams():
         self.beta3 = shared(beta.sample(shape=self.num_filter3))
         self.gamma3 = shared(gamma.sample(shape=self.num_filter3))
 
-        self.h1_size = 1024
-        self.h_W1 = shared(initW.sample(shape=(self.num_filter3 * 10 * 10, self.h1_size)))
-        self.beta_h1 = shared(beta.sample(shape=self.h1_size))
-        self.gamma_h1 = shared(gamma.sample(shape=self.h1_size))
+        self.num_filter4 = 128
+        self.W4 = shared(initW.sample(shape=(self.num_filter4, self.num_filter3, 4, 4)))
+        self.beta4 = shared(beta.sample(shape=self.num_filter4))
+        self.gamma4 = shared(gamma.sample(shape=self.num_filter4))
 
-        self.W_out = shared(initW.sample(shape=(self.h1_size, 2)))
+        self.W_out = shared(initW.sample(shape=(self.num_filter4 * 6 * 6, 2)))
         self.b_out = shared(inttB.sample(2))
 
     def get_list(self):
         return [self.W1, self.beta1, self.gamma1,
                 self.W2, self.beta2, self.gamma2,
                 self.W3, self.beta3, self.gamma3,
-                self.h_W1, self.beta_h1, self.gamma_h1,
+                self.W4, self.beta4, self.gamma4,
                 self.W_out, self.b_out]
 
     def get_reg_list(self):
         return [self.W1, self.gamma1,
                 self.W2, self.gamma2,
                 self.W3, self.gamma3,
-                self.h_W1, self.gamma_h1,
+                self.W4, self.gamma4,
                 self.W_out]
 
 
@@ -121,19 +121,25 @@ def build_discriminator(batch_size, input_var, params):
 
     print(l_conv3.output_shape)
 
-    l_hid3 = lasagne.layers.DenseLayer(
-        l_conv3, num_units=params.h1_size,
-        W=params.h_W1,
+    l_conv4 = lasagne.layers.Conv2DLayer(
+        l_conv3,
+        num_filters=params.num_filter4,
+        filter_size=(4, 4),
+        stride=2,
+        pad=2,
+        W=params.W4,
         b=None,
         nonlinearity=lasagne.nonlinearities.leaky_rectify)
 
-    l_hid3 = lasagne.layers.batch_norm(
-        l_hid3,
-        beta=params.beta_h1,
-        gamma=params.gamma_h1)
+    l_conv4 = lasagne.layers.batch_norm(
+        l_conv4,
+        beta=params.beta4,
+        gamma=params.gamma4)
+
+    print(l_conv4.output_shape)
 
     l_out = lasagne.layers.DenseLayer(
-        l_hid3, num_units=2,
+        l_conv4, num_units=2,
         W=params.W_out,
         b=params.b_out,
         nonlinearity=None)
