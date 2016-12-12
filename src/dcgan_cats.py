@@ -150,6 +150,10 @@ def build_discriminator(batch_size, input_var, params):
 def build_generator(batch_size, z):
     l_in = lasagne.layers.InputLayer(shape=(None, HIDDEN_VARS_NUMBER), input_var=z)
 
+    def norm_input(x): return x * 2 - 1
+
+    l_in = lasagne.layers.NonlinearityLayer(l_in, nonlinearity=norm_input)
+
     l_hid1 = lasagne.layers.batch_norm(lasagne.layers.DenseLayer(
         l_in, num_units=1024 * 6 * 6,
         W=lasagne.init.Normal(0.02),
@@ -254,7 +258,7 @@ def train(train_x):
         g1 = x_gen_fn()
         g2 = x_gen_fn()
         show_image(np.concatenate((g1, g2)),
-                   os.path.join(base_path, "samples_{}.png".format(epoch + 1)))
+                   os.path.join(base_path, "samples_{:03d}.png".format(epoch + 1)))
     logger.close()
 
 
