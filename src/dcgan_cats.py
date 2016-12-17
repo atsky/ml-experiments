@@ -48,7 +48,12 @@ class DiscriminatorParams():
         self.beta4 = shared(beta.sample(shape=self.num_filter4))
         self.gamma4 = shared(gamma.sample(shape=self.num_filter4))
 
-        self.W_out = shared(initW.sample(shape=(self.num_filter4 * 6 * 6, 2)))
+        self.num_h1 = 512
+        self.W_h1 = shared(initW.sample(shape=(self.num_filter4 * 6 * 6, self.num_h1)))
+        self.beta_h1 = shared(beta.sample(shape=self.num_h1))
+        self.gamma_h1 = shared(gamma.sample(shape=self.num_h1))
+
+        self.W_out = shared(initW.sample(shape=(self.num_h1, 2)))
         self.b_out = shared(inttB.sample(2))
 
     def get_list(self):
@@ -66,7 +71,7 @@ class DiscriminatorParams():
                 self.W_out]
 
 
-def build_discriminator(batch_size, input_var, params):
+def build_discriminator(batch_size, input_var, params: DiscriminatorParams):
     l_in = lasagne.layers.InputLayer(shape=(batch_size, 3, 64, 64),
                                      input_var=input_var)
 
@@ -138,8 +143,20 @@ def build_discriminator(batch_size, input_var, params):
 
     print(l_conv4.output_shape)
 
+    l_h1 = lasagne.layers.DenseLayer(
+        l_conv4,
+        num_units=params.num_h1,
+        W=params.W_h1,
+        b=None,
+        nonlinearity=lasagne.nonlinearities.leaky_rectify)
+
+    l_h1 = lasagne.layers.batch_norm(
+        l_h1,
+        beta=params.beta_h1,
+        gamma=params.gamma_h1)
+
     l_out = lasagne.layers.DenseLayer(
-        l_conv4, num_units=2,
+        l_h1, num_units=2,
         W=params.W_out,
         b=params.b_out,
         nonlinearity=None)
@@ -216,8 +233,12 @@ def train(train_x):
         train_x.astype(theano.config.floatX),
         borrow=True)
     batch_size = 64
+
     index = T.iscalar("index")
+    transposition = T.ivector("transposition")
+
     data_batch = train_data[index:index + batch_size, :]
+
     random_streams = theano.tensor.shared_randomstreams.RandomStreams()
     z = random_streams.normal((batch_size, HIDDEN_VARS_NUMBER))
     l_x_generated = build_generator(batch_size, z)
@@ -225,26 +246,36 @@ def train(train_x):
     params = DiscriminatorParams()
     l_p_data = build_discriminator(batch_size, data_batch, params)
     l_p_gen = build_discriminator(batch_size, x_generated, params)
+
     log_p_data = T.nnet.logsoftmax(lasagne.layers.get_output(l_p_data))
     log_p_gen = T.nnet.logsoftmax(lasagne.layers.get_output(l_p_gen))
-    loss_data = -log_p_data[:, 1].mean()
+
+    loss_data = -0.01 * log_p_data[:, 0].mean() - 0.99 * log_p_data[:, 1].mean()
     loss_gen = -log_p_gen[:, 0].mean()
+
     l2 = lasagne.regularization.apply_penalty(params.get_reg_list(), lasagne.regularization.l2)
     loss1 = loss_data + loss_gen + 1e-6 * l2
     params1 = params.get_list()
-    updates = lasagne.updates.adam(loss1, params1, learning_rate=0.0005)
+    updates = lasagne.updates.adam(loss1, params1, learning_rate=0.0005, beta1=0.8, beta2=0.9)
     train_discrim_fn = theano.function([index], [loss_data, loss_gen], updates=updates)
     x_gen_fn = theano.function([], x_generated)
     loss2 = -log_p_gen[:, 1].mean()
     params2 = lasagne.layers.get_all_params(l_x_generated, trainable=True)
     updates = lasagne.updates.adam(loss2, params2, learning_rate=0.0001)
     train_gen_fn = theano.function([], loss2, updates=updates)
+
+    shuffle_fn = theano.function([transposition], [],
+                                 updates=[
+                                     (train_data, train_data[transposition])
+                                 ])
+
     base_path = get_result_directory_path("dcgan_cats")
     logger = FileLogger(base_path, "main")
     logger.log("Starting training...")
     for epoch in range(num_epochs):
         indexes = list(range(train_size))
         random.shuffle(indexes)
+        shuffle_fn(indexes)
 
         start_time = time.time()
         for offset in range(0, train_size - batch_size + 1, batch_size):
