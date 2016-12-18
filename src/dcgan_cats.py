@@ -240,7 +240,7 @@ def train(train_x):
     data_batch = train_data[index:index + batch_size, :]
 
     random_streams = theano.tensor.shared_randomstreams.RandomStreams()
-    z = random_streams.normal((batch_size, HIDDEN_VARS_NUMBER))
+    z = random_streams.uniform((batch_size, HIDDEN_VARS_NUMBER)) * 2 - 1
     l_x_generated = build_generator(batch_size, z)
     x_generated = lasagne.layers.get_output(l_x_generated)
     params = DiscriminatorParams()
