@@ -61,6 +61,7 @@ class DiscriminatorParams():
                 self.W2, self.beta2, self.gamma2,
                 self.W3, self.beta3, self.gamma3,
                 self.W4, self.beta4, self.gamma4,
+                self.W_h1, self.beta_h1, self.gamma_h1,
                 self.W_out, self.b_out]
 
     def get_reg_list(self):
@@ -68,12 +69,17 @@ class DiscriminatorParams():
                 self.W2, self.gamma2,
                 self.W3, self.gamma3,
                 self.W4, self.gamma4,
+                self.W_h1, self.gamma_h1,
                 self.W_out]
 
 
 def build_discriminator(batch_size, input_var, params: DiscriminatorParams):
     l_in = lasagne.layers.InputLayer(shape=(batch_size, 3, 64, 64),
                                      input_var=input_var)
+
+    def norm_input(x): return x * 2 - 1
+
+    l_in = lasagne.layers.NonlinearityLayer(l_in, nonlinearity=norm_input)
 
     l_conv1 = lasagne.layers.Conv2DLayer(
         l_in,
@@ -92,6 +98,8 @@ def build_discriminator(batch_size, input_var, params: DiscriminatorParams):
         beta=params.beta1,
         gamma=params.gamma1)
 
+    l_conv1 = lasagne.layers.GaussianNoiseLayer(l_conv1)
+
     l_conv2 = lasagne.layers.Conv2DLayer(
         l_conv1,
         num_filters=params.num_filter2,
@@ -106,6 +114,8 @@ def build_discriminator(batch_size, input_var, params: DiscriminatorParams):
         l_conv2,
         beta=params.beta2,
         gamma=params.gamma2)
+
+    l_conv2 = lasagne.layers.GaussianNoiseLayer(l_conv2)
 
     print(l_conv2.output_shape)
 
@@ -124,6 +134,8 @@ def build_discriminator(batch_size, input_var, params: DiscriminatorParams):
         beta=params.beta3,
         gamma=params.gamma3)
 
+    l_conv3 = lasagne.layers.GaussianNoiseLayer(l_conv3)
+
     print(l_conv3.output_shape)
 
     l_conv4 = lasagne.layers.Conv2DLayer(
@@ -141,6 +153,8 @@ def build_discriminator(batch_size, input_var, params: DiscriminatorParams):
         beta=params.beta4,
         gamma=params.gamma4)
 
+    l_conv4 = lasagne.layers.GaussianNoiseLayer(l_conv4)
+
     print(l_conv4.output_shape)
 
     l_h1 = lasagne.layers.DenseLayer(
@@ -155,6 +169,8 @@ def build_discriminator(batch_size, input_var, params: DiscriminatorParams):
         beta=params.beta_h1,
         gamma=params.gamma_h1)
 
+    l_h1 = lasagne.layers.GaussianNoiseLayer(l_h1)
+
     l_out = lasagne.layers.DenseLayer(
         l_h1, num_units=2,
         W=params.W_out,
@@ -166,10 +182,6 @@ def build_discriminator(batch_size, input_var, params: DiscriminatorParams):
 
 def build_generator(batch_size, z):
     l_in = lasagne.layers.InputLayer(shape=(None, HIDDEN_VARS_NUMBER), input_var=z)
-
-    def norm_input(x): return x * 2 - 1
-
-    l_in = lasagne.layers.NonlinearityLayer(l_in, nonlinearity=norm_input)
 
     l_hid1 = lasagne.layers.batch_norm(lasagne.layers.DenseLayer(
         l_in, num_units=1024 * 6 * 6,
@@ -256,12 +268,12 @@ def train(train_x):
     l2 = lasagne.regularization.apply_penalty(params.get_reg_list(), lasagne.regularization.l2)
     loss1 = loss_data + loss_gen + 1e-6 * l2
     params1 = params.get_list()
-    updates = lasagne.updates.adam(loss1, params1, learning_rate=0.0005, beta1=0.8, beta2=0.9)
+    updates = lasagne.updates.adam(loss1, params1, learning_rate=0.0002, beta1=0.5)
     train_discrim_fn = theano.function([index], [loss_data, loss_gen], updates=updates)
     x_gen_fn = theano.function([], x_generated)
     loss2 = -log_p_gen[:, 1].mean()
     params2 = lasagne.layers.get_all_params(l_x_generated, trainable=True)
-    updates = lasagne.updates.adam(loss2, params2, learning_rate=0.0001)
+    updates = lasagne.updates.adam(loss2, params2, learning_rate=0.0001, beta1=0.5)
     train_gen_fn = theano.function([], loss2, updates=updates)
 
     shuffle_fn = theano.function([transposition], [],
@@ -272,6 +284,7 @@ def train(train_x):
     base_path = get_result_directory_path("dcgan_cats")
     logger = FileLogger(base_path, "main")
     logger.log("Starting training...")
+    step = 0
     for epoch in range(num_epochs):
         indexes = list(range(train_size))
         random.shuffle(indexes)
@@ -280,16 +293,19 @@ def train(train_x):
         start_time = time.time()
         for offset in range(0, train_size - batch_size + 1, batch_size):
             loss_data, loss_gen = train_discrim_fn(offset)
-            loss2 = train_gen_fn()
-            logger.log("loss_data {:.5f} loss_gen {:.5f}, loss2 {:.5f} "
-                       .format(float(loss_data), float(loss_gen), float(loss2)))
-
-        logger.log("Epoch {} of {} took {:.3f}s".format(epoch + 1, num_epochs, time.time() - start_time))
+            step += 1
+            if step % 5 == 0:
+                loss2 = train_gen_fn()
+                logger.log("loss_data {:.5f} loss_gen {:.5f}, loss2 {:.5f} "
+                           .format(float(loss_data), float(loss_gen), float(loss2)))
 
         g1 = x_gen_fn()
         g2 = x_gen_fn()
         show_image(np.concatenate((g1, g2)),
                    os.path.join(base_path, "samples_{:03d}.png".format(epoch + 1)))
+
+        logger.log("Epoch {} of {} took {:.3f}s".format(epoch + 1, num_epochs, time.time() - start_time))
+
     logger.close()
 
 
