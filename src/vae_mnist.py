@@ -11,6 +11,7 @@ import os
 from PIL import Image
 
 from util.data import load_data, add_img
+from util.logs import get_result_directory_path
 
 HIDDEN_VARS_NUMBER = 50
 num_epochs = 100
@@ -173,6 +174,8 @@ def main():
 
     decode_fn = theano.function([index], [data_mean, data_log_sd2])
 
+    base_path = get_result_directory_path("vae_mnist")
+
     print("Starting training...")
     for epoch in range(num_epochs):
         indexes = list(range(train_size))
@@ -184,7 +187,7 @@ def main():
         grads = []
         for i in range(0, train_size, batch_size):
             loss, grad = train_fn(i)
-            print("loss:{}".format(loss))
+            print("loss: {}".format(loss))
             train_err += loss
             grads.append(grad)
             train_batches += 1
@@ -195,13 +198,9 @@ def main():
             epoch + 1, num_epochs, time.time() - start_time))
         print("  training loss:\t\t{:.6f}".format(train_err / train_batches))
 
-        base_img_path = "../img/vae_mnist/"
-        if not os.path.exists(base_img_path):
-            os.makedirs(base_img_path)
-
         show_image(decode_fn,
                    train_x,
-                   os.path.join(base_img_path, 'samples_{}.png'.format(epoch + 1)))
+                   os.path.join(base_path, 'samples_{}.png'.format(epoch + 1)))
 
 
 if __name__ == '__main__':
