@@ -16,7 +16,7 @@ from util.logs import get_result_directory_path, FileLogger
 HIDDEN_VARS_NUMBER = 100
 num_epochs = 100
 
-
+# class for discriminator parameters
 class DiscriminatorParams():
     def __init__(self):
         initW = lasagne.init.GlorotUniform()
@@ -73,7 +73,7 @@ class DiscriminatorParams():
                 self.W_out]
 
 
-def build_discriminator(batch_size, input_var, params: DiscriminatorParams):
+def build_discriminator(batch_size, input_var, params: DiscriminatorParams, sd_noise = 0.01):
     l_in = lasagne.layers.InputLayer(shape=(batch_size, 3, 64, 64),
                                      input_var=input_var)
 
@@ -98,7 +98,7 @@ def build_discriminator(batch_size, input_var, params: DiscriminatorParams):
         beta=params.beta1,
         gamma=params.gamma1)
 
-    l_conv1 = lasagne.layers.GaussianNoiseLayer(l_conv1)
+    l_conv1 = lasagne.layers.GaussianNoiseLayer(l_conv1, sigma=sd_noise)
 
     l_conv2 = lasagne.layers.Conv2DLayer(
         l_conv1,
@@ -115,7 +115,7 @@ def build_discriminator(batch_size, input_var, params: DiscriminatorParams):
         beta=params.beta2,
         gamma=params.gamma2)
 
-    l_conv2 = lasagne.layers.GaussianNoiseLayer(l_conv2)
+    l_conv2 = lasagne.layers.GaussianNoiseLayer(l_conv2, sigma=sd_noise)
 
     print(l_conv2.output_shape)
 
@@ -134,7 +134,7 @@ def build_discriminator(batch_size, input_var, params: DiscriminatorParams):
         beta=params.beta3,
         gamma=params.gamma3)
 
-    l_conv3 = lasagne.layers.GaussianNoiseLayer(l_conv3)
+    l_conv3 = lasagne.layers.GaussianNoiseLayer(l_conv3, sigma=sd_noise)
 
     print(l_conv3.output_shape)
 
@@ -153,7 +153,7 @@ def build_discriminator(batch_size, input_var, params: DiscriminatorParams):
         beta=params.beta4,
         gamma=params.gamma4)
 
-    l_conv4 = lasagne.layers.GaussianNoiseLayer(l_conv4)
+    l_conv4 = lasagne.layers.GaussianNoiseLayer(l_conv4, sigma=sd_noise)
 
     print(l_conv4.output_shape)
 
@@ -169,7 +169,7 @@ def build_discriminator(batch_size, input_var, params: DiscriminatorParams):
         beta=params.beta_h1,
         gamma=params.gamma_h1)
 
-    l_h1 = lasagne.layers.GaussianNoiseLayer(l_h1)
+    l_h1 = lasagne.layers.GaussianNoiseLayer(l_h1, sigma=sd_noise)
 
     l_out = lasagne.layers.DenseLayer(
         l_h1, num_units=2,
@@ -239,7 +239,7 @@ def show_image(data, name):
     image.save(name)
 
 
-def train(train_x):
+def train(train_x, sd_noise, steps_skip):
     train_size = len(train_x)
     train_data = theano.shared(
         train_x.astype(theano.config.floatX),
@@ -256,8 +256,8 @@ def train(train_x):
     l_x_generated = build_generator(batch_size, z)
     x_generated = lasagne.layers.get_output(l_x_generated)
     params = DiscriminatorParams()
-    l_p_data = build_discriminator(batch_size, data_batch, params)
-    l_p_gen = build_discriminator(batch_size, x_generated, params)
+    l_p_data = build_discriminator(batch_size, data_batch, params, sd_noise)
+    l_p_gen = build_discriminator(batch_size, x_generated, params, sd_noise)
 
     log_p_data = T.nnet.logsoftmax(lasagne.layers.get_output(l_p_data))
     log_p_gen = T.nnet.logsoftmax(lasagne.layers.get_output(l_p_gen))
@@ -273,7 +273,7 @@ def train(train_x):
     x_gen_fn = theano.function([], x_generated)
     loss2 = -log_p_gen[:, 1].mean()
     params2 = lasagne.layers.get_all_params(l_x_generated, trainable=True)
-    updates = lasagne.updates.adam(loss2, params2, learning_rate=0.0001, beta1=0.5)
+    updates = lasagne.updates.adam(losss2, params2, learning_rate=0.0001, beta1=0.5)
     train_gen_fn = theano.function([], loss2, updates=updates)
 
     shuffle_fn = theano.function([transposition], [],
@@ -281,7 +281,7 @@ def train(train_x):
                                      (train_data, train_data[transposition])
                                  ])
 
-    base_path = get_result_directory_path("dcgan_cats")
+    base_path = get_result_directory_path("dcgan_cats_s_{}_n_{}".format(steps_skip, sd_noise))
     logger = FileLogger(base_path, "main")
     logger.log("Starting training...")
     step = 0
@@ -294,7 +294,7 @@ def train(train_x):
         for offset in range(0, train_size - batch_size + 1, batch_size):
             loss_data, loss_gen = train_discrim_fn(offset)
             step += 1
-            if step % 5 == 0:
+            if step % steps_skip == 0:
                 loss2 = train_gen_fn()
                 logger.log("loss_data {:.5f} loss_gen {:.5f}, loss2 {:.5f} "
                            .format(float(loss_data), float(loss_gen), float(loss2)))
@@ -311,7 +311,9 @@ def train(train_x):
 
 def main():
     data_x = load_cats_data()
-    train(data_x)
+    for sd_noise in [0.1, 0.03, 0.01]:
+        for steps in [2, 3, 4, 5]:
+            train(data_x, sd_noise, steps)
 
 
 if __name__ == '__main__':
