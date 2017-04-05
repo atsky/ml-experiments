@@ -16,6 +16,7 @@ from util.logs import get_result_directory_path, FileLogger
 HIDDEN_VARS_NUMBER = 100
 num_epochs = 100
 
+
 # class for discriminator parameters
 class DiscriminatorParams():
     def __init__(self):
@@ -73,7 +74,7 @@ class DiscriminatorParams():
                 self.W_out]
 
 
-def build_discriminator(batch_size, input_var, params: DiscriminatorParams, sd_noise = 0.01):
+def build_discriminator(batch_size, input_var, params: DiscriminatorParams):
     l_in = lasagne.layers.InputLayer(shape=(batch_size, 3, 64, 64),
                                      input_var=input_var)
 
@@ -91,14 +92,12 @@ def build_discriminator(batch_size, input_var, params: DiscriminatorParams, sd_n
         b=None,
         nonlinearity=lasagne.nonlinearities.leaky_rectify)
 
-    print(l_conv1.output_shape)
-
     l_conv1 = lasagne.layers.batch_norm(
         l_conv1,
         beta=params.beta1,
         gamma=params.gamma1)
 
-    l_conv1 = lasagne.layers.GaussianNoiseLayer(l_conv1, sigma=sd_noise)
+    l_conv1 = lasagne.layers.GaussianNoiseLayer(l_conv1)
 
     l_conv2 = lasagne.layers.Conv2DLayer(
         l_conv1,
@@ -115,9 +114,7 @@ def build_discriminator(batch_size, input_var, params: DiscriminatorParams, sd_n
         beta=params.beta2,
         gamma=params.gamma2)
 
-    l_conv2 = lasagne.layers.GaussianNoiseLayer(l_conv2, sigma=sd_noise)
-
-    print(l_conv2.output_shape)
+    l_conv2 = lasagne.layers.GaussianNoiseLayer(l_conv2)
 
     l_conv3 = lasagne.layers.Conv2DLayer(
         l_conv2,
@@ -134,9 +131,7 @@ def build_discriminator(batch_size, input_var, params: DiscriminatorParams, sd_n
         beta=params.beta3,
         gamma=params.gamma3)
 
-    l_conv3 = lasagne.layers.GaussianNoiseLayer(l_conv3, sigma=sd_noise)
-
-    print(l_conv3.output_shape)
+    l_conv3 = lasagne.layers.GaussianNoiseLayer(l_conv3)
 
     l_conv4 = lasagne.layers.Conv2DLayer(
         l_conv3,
@@ -153,9 +148,7 @@ def build_discriminator(batch_size, input_var, params: DiscriminatorParams, sd_n
         beta=params.beta4,
         gamma=params.gamma4)
 
-    l_conv4 = lasagne.layers.GaussianNoiseLayer(l_conv4, sigma=sd_noise)
-
-    print(l_conv4.output_shape)
+    l_conv4 = lasagne.layers.GaussianNoiseLayer(l_conv4)
 
     l_h1 = lasagne.layers.DenseLayer(
         l_conv4,
@@ -169,7 +162,7 @@ def build_discriminator(batch_size, input_var, params: DiscriminatorParams, sd_n
         beta=params.beta_h1,
         gamma=params.gamma_h1)
 
-    l_h1 = lasagne.layers.GaussianNoiseLayer(l_h1, sigma=sd_noise)
+    l_h1 = lasagne.layers.GaussianNoiseLayer(l_h1)
 
     l_out = lasagne.layers.DenseLayer(
         l_h1, num_units=2,
@@ -183,40 +176,34 @@ def build_discriminator(batch_size, input_var, params: DiscriminatorParams, sd_n
 def build_generator(batch_size, z):
     l_in = lasagne.layers.InputLayer(shape=(None, HIDDEN_VARS_NUMBER), input_var=z)
 
+    w_init = lasagne.init.Normal(0.01)
+
     l_hid1 = lasagne.layers.batch_norm(lasagne.layers.DenseLayer(
         l_in, num_units=1024 * 6 * 6,
-        W=lasagne.init.Normal(0.02),
+        W=w_init,
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
 
     l_reshaped = lasagne.layers.ReshapeLayer(l_hid1, shape=(batch_size, 1024, 6, 6))
 
     l_deconv1 = lasagne.layers.batch_norm(lasagne.layers.TransposedConv2DLayer(
         l_reshaped, 512, filter_size=(4, 4), stride=(2, 2), crop=2,
-        W=lasagne.init.Normal(0.02),
+        W=w_init,
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
-
-    print(l_deconv1.output_shape)
 
     l_deconv2 = lasagne.layers.batch_norm(lasagne.layers.TransposedConv2DLayer(
         l_deconv1, 256, filter_size=(4, 4), stride=(2, 2), crop=2,
-        W=lasagne.init.Normal(0.02),
+        W=w_init,
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
-
-    print(l_deconv2.output_shape)
 
     l_deconv3 = lasagne.layers.batch_norm(lasagne.layers.TransposedConv2DLayer(
         l_deconv2, 128, filter_size=(4, 4), stride=(2, 2), crop=2,
-        W=lasagne.init.Normal(0.02),
+        W=w_init,
         nonlinearity=lasagne.nonlinearities.leaky_rectify))
-
-    print(l_deconv3.output_shape)
 
     l_deconv4 = lasagne.layers.TransposedConv2DLayer(
         l_deconv3, 3, filter_size=(4, 4), stride=(2, 2), crop=3,
-        W=lasagne.init.Normal(0.02),
+        W=w_init,
         nonlinearity=lasagne.nonlinearities.sigmoid)
-
-    print(l_deconv4.output_shape)
 
     return l_deconv4
 
@@ -239,12 +226,12 @@ def show_image(data, name):
     image.save(name)
 
 
-def train(train_x, sd_noise, steps_skip):
+def train(train_x):
     train_size = len(train_x)
     train_data = theano.shared(
         train_x.astype(theano.config.floatX),
         borrow=True)
-    batch_size = 64
+    batch_size = 128
 
     index = T.iscalar("index")
     transposition = T.ivector("transposition")
@@ -256,8 +243,8 @@ def train(train_x, sd_noise, steps_skip):
     l_x_generated = build_generator(batch_size, z)
     x_generated = lasagne.layers.get_output(l_x_generated)
     params = DiscriminatorParams()
-    l_p_data = build_discriminator(batch_size, data_batch, params, sd_noise)
-    l_p_gen = build_discriminator(batch_size, x_generated, params, sd_noise)
+    l_p_data = build_discriminator(batch_size, data_batch, params)
+    l_p_gen = build_discriminator(batch_size, x_generated, params)
 
     log_p_data = T.nnet.logsoftmax(lasagne.layers.get_output(l_p_data))
     log_p_gen = T.nnet.logsoftmax(lasagne.layers.get_output(l_p_gen))
@@ -273,7 +260,7 @@ def train(train_x, sd_noise, steps_skip):
     x_gen_fn = theano.function([], x_generated)
     loss2 = -log_p_gen[:, 1].mean()
     params2 = lasagne.layers.get_all_params(l_x_generated, trainable=True)
-    updates = lasagne.updates.adam(losss2, params2, learning_rate=0.0001, beta1=0.5)
+    updates = lasagne.updates.adam(loss2, params2, learning_rate=0.0001, beta1=0.5)
     train_gen_fn = theano.function([], loss2, updates=updates)
 
     shuffle_fn = theano.function([transposition], [],
@@ -281,27 +268,26 @@ def train(train_x, sd_noise, steps_skip):
                                      (train_data, train_data[transposition])
                                  ])
 
-    base_path = get_result_directory_path("dcgan_cats_s_{}_n_{}".format(steps_skip, sd_noise))
+    base_path = get_result_directory_path("dcgan_cats")
     logger = FileLogger(base_path, "main")
     logger.log("Starting training...")
-    step = 0
+
     for epoch in range(num_epochs):
         indexes = list(range(train_size))
         random.shuffle(indexes)
         shuffle_fn(indexes)
 
         start_time = time.time()
-        for offset in range(0, train_size - batch_size + 1, batch_size):
-            loss_data, loss_gen = train_discrim_fn(offset)
-            step += 1
-            if step % steps_skip == 0:
-                loss2 = train_gen_fn()
-                logger.log("loss_data {:.5f} loss_gen {:.5f}, loss2 {:.5f} "
-                           .format(float(loss_data), float(loss_gen), float(loss2)))
+        for step in range(train_size // batch_size):
+            if step % 3 == 0:
+                train_gen_fn()
+            else:
+                loss_data, loss_gen = train_discrim_fn(step * batch_size)
+                logger.log("loss_data {:.5f} loss_gen {:.5f} "
+                           .format(float(loss_data), float(loss_gen)))
 
         g1 = x_gen_fn()
-        g2 = x_gen_fn()
-        show_image(np.concatenate((g1, g2)),
+        show_image(g1,
                    os.path.join(base_path, "samples_{:03d}.png".format(epoch + 1)))
 
         logger.log("Epoch {} of {} took {:.3f}s".format(epoch + 1, num_epochs, time.time() - start_time))
@@ -311,9 +297,7 @@ def train(train_x, sd_noise, steps_skip):
 
 def main():
     data_x = load_cats_data()
-    for sd_noise in [0.1, 0.03, 0.01]:
-        for steps in [2, 3, 4, 5]:
-            train(data_x, sd_noise, steps)
+    train(data_x)
 
 
 if __name__ == '__main__':
